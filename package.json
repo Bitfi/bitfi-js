@@ -1,6 +1,6 @@
 {
   "name": "@bitfi/eth-bitfi-keyring",
-  "version": "1.0.11",
+  "version": "1.0.12",
   "description": "",
   "main": "index.js",
   "scripts": {
@@ -11,6 +11,7 @@
   "dependencies": {
     "base64-js": "^1.5.1",
     "crypto": "^1.0.1",
+    "isomorphic-ws": "^4.0.1",
     "node-fetch": "^2.6.1",
     "secp256k1": "^3.8.0",
     "ws": "^7.4.6"

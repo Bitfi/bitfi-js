@@ -1,4 +1,4 @@
-const WebSocket = require('ws')
+const WebSocket = require('isomorphic-ws')
 const base64 = require('base64-js')
 const CryptoJS = require('crypto')
 const fetch = require('node-fetch')

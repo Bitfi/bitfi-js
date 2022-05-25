@@ -1,7 +1,7 @@
 const EventEmitter = require('events').EventEmitter
 const { Bitfi, calculateCode } =  require('./bitfi')
 const ecdsa = require('secp256k1')
-const WebSocket = require('ws')
+const WebSocket = require('isomorphic-ws')
 const fetch = require('node-fetch')
 
 function signin(params) {
