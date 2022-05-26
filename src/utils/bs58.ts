@@ -1,6 +1,6 @@
 function encode(
   B, //Uint8Array raw byte input
-  A = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'.split('') //Base58 characters (i.e. "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz")
+  A: string[] = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'.split('') //Base58 characters (i.e. "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz")
 ) {
   var d = [], //the array for storing the stream of base58 digits
     s = '', //the result string variable that will be returned
@@ -28,6 +28,6 @@ function encode(
   return s; //return the final base58 string
 }
 
-module.exports = {
+export default {
   encode,
 };

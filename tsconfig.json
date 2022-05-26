@@ -1,0 +1,30 @@
+
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": false,
+    "forceConsistentCasingInFileNames": true,
+    "noFallthroughCasesInSwitch": true,
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "incremental": true,
+    "target": "es5",
+    //"noEmit": true,
+    "sourceMap": true,
+    "module": "commonjs",
+    "outDir": "./dist",
+    "baseUrl": ".",
+    //"paths": {
+    //  "@src/*": ["./src/*"],
+    //},
+    "lib": [ "ES2020" ],
+  },
+  "include": [
+    "src" 
+  ],
+  "exclude": ["node_modules", "dist"]
+}

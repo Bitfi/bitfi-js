@@ -1,10 +1,12 @@
-const EventEmitter = require('events').EventEmitter
-const { Bitfi, calculateCode } =  require('./bitfi')
-const ecdsa = require('secp256k1')
-const WebSocket = require('isomorphic-ws')
-const fetch = require('node-fetch')
+import { Transaction } from 'ethereumjs-tx'
+import { BitfiConfig, SignInParams, BitfiKeyringSerialized } from './types'
+import { IBitfiKeyring } from '../types'
+import { Bitfi, calculateCode } from './bitfi'
+import ecdsa from 'secp256k1'
+import WebSocket from 'isomorphic-ws'
+import fetch from 'node-fetch'
 
-function signin(params) {
+function signin(params: SignInParams): Promise<IBitfiKeyring<BitfiKeyringSerialized>>{
   const privKey = Buffer.from(params.appSecret, 'hex')
   const randomSigningData = Buffer.from(params.signData, 'hex')
   const deviceId = Buffer.from(params.deviceId, 'hex')
@@ -44,12 +46,12 @@ function signin(params) {
       derivation_index: "22" //dag
     }
 
-    websocket.on('open', function (event) {
+    websocket.on('open', function (event: any) {
       websocket.send(JSON.stringify(request));
     });
     
 
-    websocket.on('message', async function (e) {
+    websocket.on('message', async function (e: any) {
       const response = JSON.parse(e)
 
       if (response.display_code && response.display_code !== code) {
@@ -92,7 +94,7 @@ function signin(params) {
   })
 };
 
-async function request(token, method, url, params = undefined) {
+async function request(token: string, method: 'GetAddresses' | 'IsTokenValid', url: string, params = undefined) {
   const response = await fetch(url, {
     method: 'POST',
     headers: {
@@ -113,7 +115,7 @@ async function request(token, method, url, params = undefined) {
   return json
 }
 
-async function init(token, public_key, secret, config) {
+async function init(token: string, public_key: string, secret: string, config: BitfiConfig) {
   
   const { Content : addresses } = await request(token, 'GetAddresses', config.apiUrl)
 
@@ -132,20 +134,22 @@ async function init(token, public_key, secret, config) {
   
 }
 
-class BitfiKeyring extends EventEmitter {
-  constructor(opts) {
-    super(opts)
+class BitfiKeyring implements IBitfiKeyring<BitfiKeyringSerialized> {
+  private _bitfi: Bitfi | null
+  public type: string = "Bitfi"
+
+  constructor() {
     this._bitfi = null
   }
 
-  async signPersonalMessage(address, data) {
+  public async signPersonalMessage(address: string, data: string) {
     this._checkAddress(address)
 
     const res = await this._bitfi.signMessagePrefixed(data)
     return res.signatureResponse
   }
 
-  async serialize() {
+  public async serialize() {
     const authToken = this._bitfi.getAuthToken()
     const appSecret = this._bitfi.getSessionSecret()
     const publicKey = this._bitfi.getPublicKey()
@@ -161,7 +165,12 @@ class BitfiKeyring extends EventEmitter {
     return serialized
   }
 
-  async deserialize(obj) {
+  public async deserialize(obj: {
+    authToken: string,
+    publicKey: string,
+    appSecret: string,
+    config: BitfiConfig
+  }) {
     this._bitfi = await init(
       obj.authToken, 
       obj.publicKey, 
@@ -170,65 +179,69 @@ class BitfiKeyring extends EventEmitter {
     )
   }
 
-  async addAccounts(n) {
+  public async addAccounts(n: number) {
     throw new Error("Is not supported on this device");
   }
 
-  async getAccounts() {
+  private _checkInitialized() {
+    if (!this._bitfi)
+      throw new Error('Not initialized')
+  }
+
+  public async getAccounts() {
     const address = this._bitfi.getAddress()
     return [address]
   }
 
-  async signTransaction(address, transaction) {
+  public async signTransaction(address: string, transaction: Transaction) {
     this._checkAddress(address)
 
     //if (transaction.data) {
     const serialized = transaction.serialize().toString('hex')
     const res = await this._bitfi.signMessageBlind(serialized)
 
-    const { v, r, s } = derh2obj(res.signatureResponse)
-    transaction.v = v
-    transaction.r = r
-    transaction.s = s
+    //const { v, r, s } = derh2obj(res.signatureResponse)
+    //transaction.v = v
+    //transaction.r = r
+    //transaction.s = s
     return transaction
     //}
   }
 
-  _checkAddress(address) {
+  private _checkAddress(address: string) {
     if (address.toLowerCase() !== this._bitfi.getAddress().toLowerCase()) {
       throw new Error(`This address is not present in bitfi wallet: ${address}`)
     }
   }
 
-  async signMessage(address, data) {
+  public async signMessage(address: string, data: string) {
     this._checkAddress(address)
 
     const signature = await this._bitfi.signMessageBlind(data)
     return signature.signatureResponse
   }
 
-  async getEncryptionPublicKey(address) {
+  public async getEncryptionPublicKey(address: string) {
     this._checkAddress(address)
 
     return this._bitfi.getPublicKey()
   }
 
-  async decryptMessage(address, data) {
+  public async decryptMessage(address: string, data: string): Promise<string> {
     throw new Error("Method not implemented.");
   }
 
-  async exportAccount(address) {
+  public async exportAccount(address: string) {
     throw new Error("Not supported on this device");
   }
 
-  async removeAccount(address) {
+  public async removeAccount(address: string) {
     this._bitfi = null
   }
   
 }
 
-BitfiKeyring.type = "BitfiKeyring"
-module.exports = {
+export {
   BitfiKeyring,
   signin, 
   calculateCode

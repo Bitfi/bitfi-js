@@ -1,17 +1,12 @@
-const WebSocket = require('isomorphic-ws')
-const base64 = require('base64-js')
-const CryptoJS = require('crypto')
-const fetch = require('node-fetch')
-const ecdsa = require('secp256k1')
-const bs58 = require('./bs58')
+import WebSocket from 'isomorphic-ws'
+import CryptoJS from 'crypto'
+import fetch from 'node-fetch'
+import ecdsa from 'secp256k1'
+import { BitfiConfig, Callback, EnvoyMessage, SignedMessageResponse } from './types'
+import bs58 from '../utils/bs58'
+import hex from '../utils/hex'
 
-function hexToBytes(hex) {
-  for (var bytes = [], c = 0; c < hex.length; c += 2)
-      bytes.push(parseInt(hex.substr(c, 2), 16));
-  return bytes;
-}
-
-function calculateCode(randomSigningData, privKey, deviceId) {
+export function calculateCode(randomSigningData: string, privKey: string, deviceId: string) {
   const pubKey = Buffer.from(ecdsa.publicKeyCreate(Buffer.from(privKey, 'hex'), true))
   const ripemd160 = CryptoJS.createHash('ripemd160')
   const sha256 = CryptoJS.createHash('sha256')
@@ -28,19 +23,25 @@ function calculateCode(randomSigningData, privKey, deviceId) {
   const md5hash = md5.update(data).digest().toString('hex')
 
   const tmp = md5hash.slice(-12)
-  const first = bs58.encode(hexToBytes(tmp.slice(0, 4)))
+  const first = bs58.encode(hex.toBytes(tmp.slice(0, 4)))
   const second = tmp.slice(4, 10)
   
   return `${first}-${second}`.toUpperCase()
 }
 
-class Bitfi {
+export class Bitfi {
+  private readonly _config: BitfiConfig
+  private readonly _authToken: string
+  private readonly _publicKey: string
+  private readonly _address: string
+  private readonly _sessionSecret: string
+
   constructor(
-    authToken, 
-    publicKey, 
-    sessionSecret, 
-    address, 
-    config
+    authToken: string, 
+    publicKey: string, 
+    sessionSecret: string, 
+    address: string, 
+    config: BitfiConfig
   ) {
     this._config = config
     this._authToken = authToken
@@ -49,38 +50,38 @@ class Bitfi {
     this._sessionSecret = sessionSecret
   }
 
-  getPublicKey() {
+  public getPublicKey() {
     return this._publicKey
   }
 
-  getAddress() {
+  public getAddress() {
     return this._address
   }
 
-  getAuthToken() {
+  public getAuthToken() {
     return this._authToken
   }
 
-  getConfig() {
+  public getConfig() {
     return this._config
   }
 
-  getSessionSecret() {
+  public getSessionSecret() {
     return this._sessionSecret
   }
 
-  receiveEnvoy(envoyToken, onMessage) {
+  private _receiveEnvoy<T extends any>(envoyToken: string, onMessage?: Callback<EnvoyMessage>): Promise<T> {
     return new Promise((res, rej) => {
       var websocket = new WebSocket(this._config.envoyUrl);
       
-      websocket.on("open", function (event) {
+      websocket.on("open", function (event: any) {
         websocket.send(JSON.stringify({ ClientToken: envoyToken }));
       });
   
-      websocket.on("message", function (e) {
-        var obj = JSON.parse(e);
+      websocket.on("message", function (event: string) {
+        var obj = JSON.parse(event);
 
-        const envoyMes = {
+        const envoyMes: EnvoyMessage = {
           completed: obj.Completed,
           error_message: obj.Error,
           user_message: obj.Message,
@@ -98,13 +99,13 @@ class Bitfi {
         
         if (envoyMes.user_message && envoyMes.completed) {
           websocket.close()
-          res(JSON.parse(Buffer.from(base64.toByteArray(envoyMes.user_message), 'hex')))
+          res(JSON.parse(Buffer.from(envoyMes.user_message, 'base64').toString('utf-8')))
         }
       })
     })
   }
 
-  async signMessageBlind(message, onMessage) {
+  public async signMessageBlind(message: string, onMessage?: Callback<EnvoyMessage>): Promise<SignedMessageResponse> {
     let envoyToken = ''
     
     const sessionSecret = Buffer.from(this._sessionSecret, 'hex')
@@ -141,7 +142,12 @@ class Bitfi {
         }
       }
 
-      const { data } = await fetch.post(this._config.apiUrl, request)
+      const response = await fetch(this._config.apiUrl, {
+        method: 'POST',
+        body: JSON.stringify(request)
+      })
+      
+      const data = await response.json()
   
       if (data && data.error) {
         throw new Error(data.error && data.error.message)
@@ -153,11 +159,11 @@ class Bitfi {
   
       envoyToken = data
     }
-    catch (exc) {
+    catch (exc: any) {
       throw new Error(`Unable to fetch envoy token: ${JSON.stringify(exc && exc.message)}`)
     }
   
-    const raw = await this.receiveEnvoy<any>(envoyToken, onMessage)
+    const raw = await this._receiveEnvoy<any>(envoyToken, onMessage)
 
     return {
       success: raw.Success,
@@ -167,21 +173,26 @@ class Bitfi {
   }
   
 
-  async signMessagePrefixed(message, onMessage) {
+  public async signMessagePrefixed(message: string, onMessage?: Callback<EnvoyMessage>): Promise<SignedMessageResponse> {
     let envoyToken = ''
   
     try {
-      const { data } = await fetch.post(this._config.apiUrl, {
-        authToken: this._authToken,
-        method: 'SignMessage',
-        messageModel: {
-          MessageRequest: {
-            Message: message,
-            Address: this._address,
-            Symbol: 'dag',
+      const res = await fetch(this._config.apiUrl, {
+        method: 'POST',
+        body: JSON.stringify({
+          authToken: this._authToken,
+          method: 'SignMessage',
+          messageModel: {
+            MessageRequest: {
+              Message: message,
+              Address: this._address,
+              Symbol: 'dag',
+            }
           }
-        }
+        })
       })
+
+      const data = await res.json()
   
       if (data && data.error) {
         throw new Error(data.error && data.error.message)
@@ -193,11 +204,11 @@ class Bitfi {
   
       envoyToken = data
     }
-    catch (exc) {
+    catch (exc: any) {
       throw new Error(`Unable to fetch envoy token: ${JSON.stringify(exc && exc.message)}`)
     }
   
-    const raw = await this.receiveEnvoy<any>(envoyToken, onMessage)
+    const raw = await this._receiveEnvoy<any>(envoyToken, onMessage)
 
     return {
       success: raw.Success,
