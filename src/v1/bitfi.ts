@@ -1,14 +1,18 @@
 import WebSocket from 'isomorphic-ws'
 import CryptoJS from 'crypto'
 import { Buffer } from 'buffer'
-import fetch from 'node-fetch'
-import ecdsa from 'secp256k1'
+import axios from 'axios'
 import { BitfiConfig, Callback, EnvoyMessage, SignedMessageResponse } from './types'
 import bs58 from '../utils/bs58'
 import hex from '../utils/hex'
+import { ec } from "elliptic";
+
+const curve = new ec('secp256k1')
 
 export function calculateCode(randomSigningData: string, privKey: string, deviceId: string) {
-  const pubKey = Buffer.from(ecdsa.publicKeyCreate(Buffer.from(privKey, 'hex'), true))
+  const pubKey = Buffer.from(curve.keyFromPrivate(privKey).getPublic().encodeCompressed('hex'), 'hex')
+
+  //const pubKey = Buffer.from(ecdsa.publicKeyCreate(Buffer.from(privKey, 'hex'), true))
   const ripemd160 = CryptoJS.createHash('ripemd160')
   const sha256 = CryptoJS.createHash('sha256')
   const md5 = CryptoJS.createHash('md5')
@@ -111,19 +115,23 @@ export class Bitfi {
     
     const sessionSecret = Buffer.from(this._sessionSecret, 'hex')
     const sha256 = CryptoJS.createHash('sha256')
-    const hash = sha256.update(message, 'utf8').digest()    
-    const pubKey = ecdsa.publicKeyCreate(sessionSecret)
-    const res = ecdsa.ecdsaSign(hash, sessionSecret)
+    const hash = sha256.update(message, 'utf8').digest()  
+    const eckey = curve.keyFromPrivate(sessionSecret)
+    const pubKey = Buffer.from(eckey.getPublic().encodeCompressed('hex'), 'hex')  
+    //const pubKey = ecdsa.publicKeyCreate(sessionSecret)
+    const derSign = eckey.sign(hash, sessionSecret, { canonical: true }).toDER()
 
 
     //verify signature
-    const verified = ecdsa.ecdsaVerify(res.signature, hash, pubKey)
+    const verified = eckey.verify(hash, derSign)
+
+    //const verified = ecdsa.ecdsaVerify(res.signature, hash, pubKey)
 
     if (!verified) {
       throw new Error("Signature is not valid")
     }
 
-    const signatureDer = ecdsa.signatureExport(res.signature)
+    //const signatureDer = ecdsa.signatureExport(res.signature)
 
     try {
 
@@ -134,7 +142,7 @@ export class Bitfi {
           BlindRequest: {
             PublicKey: Buffer.from(pubKey).toString('hex'),
             RequestMessage: message,
-            Signature: Buffer.from(signatureDer).toString('hex')
+            Signature: Buffer.from(derSign).toString('hex')
           },
           MessageRequest: {
             Address: this._address,
@@ -143,12 +151,12 @@ export class Bitfi {
         }
       }
 
-      const response = await fetch(this._config.apiUrl, {
+      const response = await axios(this._config.apiUrl, {
         method: 'POST',
-        body: JSON.stringify(request)
+        data: JSON.stringify(request)
       })
       
-      const data = await response.json()
+      const data = response.data
   
       if (data && data.error) {
         throw new Error(data.error && data.error.message)
@@ -178,9 +186,9 @@ export class Bitfi {
     let envoyToken = ''
   
     try {
-      const res = await fetch(this._config.apiUrl, {
+      const res = await axios(this._config.apiUrl, {
         method: 'POST',
-        body: JSON.stringify({
+        data: JSON.stringify({
           authToken: this._authToken,
           method: 'SignMessage',
           messageModel: {
@@ -193,7 +201,7 @@ export class Bitfi {
         })
       })
 
-      const data = await res.json()
+      const data = res.data
   
       if (data && data.error) {
         throw new Error(data.error && data.error.message)

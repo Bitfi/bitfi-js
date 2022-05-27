@@ -14,7 +14,7 @@
     "incremental": true,
     "target": "es5",
     //"noEmit": true,
-    "sourceMap": true,
+    "sourceMap": false,
     "module": "commonjs",
     "outDir": "./dist",
     "baseUrl": ".",

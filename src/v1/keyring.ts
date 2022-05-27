@@ -3,18 +3,21 @@ import { BitfiConfig, SignInParams, BitfiKeyringSerialized } from './types'
 import { IBitfiKeyring } from '../types'
 import { Buffer } from 'buffer'
 import { Bitfi, calculateCode } from './bitfi'
-import ecdsa from 'secp256k1'
 import WebSocket from 'isomorphic-ws'
-import fetch from 'node-fetch'
+import axios from 'axios'
+import { ec } from "elliptic";
+const curve = new ec('secp256k1')
 
 function signin(params: SignInParams): Promise<IBitfiKeyring<BitfiKeyringSerialized>>{
   const privKey = Buffer.from(params.appSecret, 'hex')
   const randomSigningData = Buffer.from(params.signData, 'hex')
   const deviceId = Buffer.from(params.deviceId, 'hex')
   
+  /*
   if (!ecdsa.privateKeyVerify(privKey)) {
     throw new Error("Invalid ecdsa key, please, provide another one")
   }
+  */
 
   if (deviceId.length !== 3) {
     throw new Error('Invalid device ID')
@@ -28,7 +31,10 @@ function signin(params: SignInParams): Promise<IBitfiKeyring<BitfiKeyringSeriali
     throw Error("Inavlid private key")
   }
 
-  const pubKey = Buffer.from(ecdsa.publicKeyCreate(privKey, true))
+  const eckey = curve.keyFromPrivate(privKey)
+  const pubKey = Buffer.from(eckey.getPublic().encodeCompressed('hex'), 'hex')  
+
+  //const pubKey = Buffer.from(ecdsa.publicKeyCreate(privKey, true))
   const code = calculateCode(params.signData, params.appSecret, params.deviceId)
 
   let notified = false
@@ -96,19 +102,19 @@ function signin(params: SignInParams): Promise<IBitfiKeyring<BitfiKeyringSeriali
 };
 
 async function request(token: string, method: 'GetAddresses' | 'IsTokenValid', url: string, params = undefined) {
-  const response = await fetch(url, {
+  const response = await axios(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
       // 'Content-Type': 'application/x-www-form-urlencoded',
     },
-    body: JSON.stringify({
+    data: JSON.stringify({
       authToken: token,
       method,
       transferModel: params
     })
   })
-  const json = await response.json()
+  const json = await response.data
 
   if (json.error)
     throw new Error(json.Content.error)

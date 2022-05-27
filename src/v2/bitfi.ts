@@ -196,9 +196,16 @@ export default class Bitfi {
       .update(bytes)
       .digest()
 
-    const derSignature = Buffer.from(eckey.sign(hash, { canonical: true }).toDER()).toString('hex');
+    const derSignature = eckey.sign(hash, { canonical: true }).toDER()
+    const derSignatureHex = Buffer.from(derSignature).toString('hex');
 
-    const keyHex = await this._request(Buffer.from(`${OPCODES.AUTH}${message}${derSignature}`, 'hex'), 60 << 1)
+    const verified = eckey.verify(hash, derSignature)
+    
+    if (!verified) {
+      throw new Error("Invalid signature")
+    }
+
+    const keyHex = await this._request(Buffer.from(`${OPCODES.AUTH}${message}${derSignatureHex}`, 'hex'), 60 << 1)
     const key = curve.keyFromPublic(keyHex, 'hex').getPublic()
 
     const sharedHex = key.mul(eckey.getPrivate()).encodeCompressed('hex') //03 means compressed
