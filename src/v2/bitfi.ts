@@ -1,46 +1,15 @@
-//import fetch from "node-fetch"
 import axios from 'axios'
 import { ec } from "elliptic";
+import { Buffer } from 'buffer'
 import Crypto from 'crypto'
-import { Addresses, DeviceInfo, Result, Signature, Symbol, Transaction } from './types';
-import { TimeoutError } from './errors';
+import { 
+  Addresses, DeviceInfo, PublicKeys, 
+  Result, Signature, Symbol, 
+  SignedTransaction, Session, TransferType, 
+  Methods, OPCODES, TransferParams, DeviceErrorResponse 
+} from './types';
+import { DeviceError, TimeoutError } from './errors';
 const curve = new ec('secp256k1')
-
-type Session = {
-  code: Buffer,
-  sharedSecretHash: Buffer,
-  eckey: any
-}
-
-
-enum Methods {
-  transfer = 1, 
-  sign_message, 
-  get_addresses,
-  get_pub_keys, 
-  get_bat_stats, 
-  get_device_info, 
-  get_device_envoy
-}
-
-//BAD!
-enum TransferType {
-  OUT_SELF = 0,
-  BLIND_EXECUTION,
-  TOKENTRANSFER,
-}
-
-type DeviceError = {
-  message: string,
-  code: number
-}
-
-enum OPCODES {
-  CHALLEGE = "90c55055",
-  AUTH = "e9d92935",
-  PONG = "504f4e47", //ascii for PONG
-  ENCRYPTED = "41494531" // ascii for AIE1
-}
 
 export default class Bitfi { 
   private readonly _url: string
@@ -49,15 +18,17 @@ export default class Bitfi {
   private readonly _channelPublicKey: Buffer
   private readonly _deviceID: string
 
-  constructor(url: string, deviceId: string, channelPublicKey: Buffer, timeoutSec: number = 5) {
-    if (channelPublicKey.length !== 33)
+  constructor(url: string, deviceId: string, channelPublicKey: Buffer | string, timeoutSec: number = 5) {
+    const buffer: Buffer = typeof channelPublicKey === 'string'? Buffer.from(channelPublicKey, 'hex') : channelPublicKey
+
+    if (buffer.length !== 33)
       throw new Error("Invalid compressed public key, it should 33 bytes")
 
     if (Buffer.from(deviceId, 'hex').length !== 3) {
       throw new Error(`Invalid device id ${deviceId}`)
     }
     this._timeoutSec = timeoutSec
-    this._channelPublicKey = channelPublicKey
+    this._channelPublicKey = buffer
     this._url = url
     this._deviceID = deviceId
   }
@@ -95,8 +66,10 @@ export default class Bitfi {
       case OPCODES.ENCRYPTED:
         return this._decrypt(buffer, this._session).toString('utf-8')
       
-      default:
-        throw new Error(data.toString('utf-8')) 
+      default: {
+        const deviceError = JSON.parse(buffer.toString('utf-8')) as DeviceErrorResponse
+        throw new DeviceError(deviceError.message, deviceError.code)
+      }
     }
   }
   
@@ -143,8 +116,6 @@ export default class Bitfi {
       devicePublicKey,
       cipherText
     ])).digest()
-
-    console.log(mac.toString('hex'))
     
     if (!hmac.equals(mac)) {
       throw new Error(`hmac's are not equal`)
@@ -260,43 +231,21 @@ export default class Bitfi {
     return this._requestEncrypted<DeviceInfo>(object)
   }
 
-  /**
-   * 
-   * Params = new TransferInfo()
-            {
-              Amount = Format.ToSatoshi("0.18", 18).ToString(),
-              From = "0x12884A28b943Bf42bEAD49E3a7627E109dfB12Fb",
-              To = "0x12884A28b943Bf42bEAD49E3a7627E109dfB12Fb",
-              FeeValue = Format.ToSatoshi("0.00000003", 18).ToString(),
-
-              GasUsed = "150000",
-              Nonce = "1",
-              TransferType = TransferType.OUT_SELF,
-              Symbol = "eth",
-
-            },
-   */
-
-  public async transfer(
-    from: string, to: string, amount: bigint, 
-    nonce: number, gasPrice: bigint, 
-    gasLimit: bigint, data: string = undefined
-  ): Promise<Transaction> {
+  public async transfer<T extends TransferType>(params: TransferParams[T]): Promise<SignedTransaction> {
     const object = {
       method: Methods.transfer.toString(),
       params: {
-        from, 
-        to,
-        amount: amount.toString(),
-        nonce,
-        feeValue: (gasPrice * gasLimit).toString(),
-        gasUsed: gasLimit.toString(),
-        symbol: 'eth',
-        transferType: TransferType.OUT_SELF
+        ...params,
+        amount: params.amount.toString(),
+        feeValue: (params.gasPrice * params.gasLimit).toString(),
+        gasUsed: params.gasLimit.toString(),
       }
     }
 
-    return this._requestEncrypted<Transaction>(object)
+    delete object.params.gasPrice
+    delete object.params.gasLimit
+
+    return this._requestEncrypted<SignedTransaction>(object)
   }
 
   public async getAddresses(symbol: Symbol = 'eth'): Promise<string[]> {
@@ -310,12 +259,33 @@ export default class Bitfi {
     return (await this._requestEncrypted<Addresses>(object)).addresses
   }
 
-  public async signMessage(address: string, message: Buffer, symbol: Symbol = 'eth'): Promise<Signature> {
+  public async getDeviceEnvoy(): Promise<string> {
+    const object = {
+      method: Methods.get_device_envoy,
+    }
+
+    return await this._requestEncrypted<string>(object)
+  }
+
+  public async getPublicKeys(symbol: Symbol = 'eth'): Promise<string[]> {
+    const object = {
+      method: Methods.get_pub_keys,
+      params: {
+        symbol
+      }
+    }
+
+    return (await this._requestEncrypted<PublicKeys>(object)).publicKeys
+  }
+
+  public async signMessage(address: string, message: Buffer | string, symbol: Symbol = 'eth'): Promise<Signature> {
+    const buffer: Buffer = typeof message === 'string'? Buffer.from(message, 'utf-8') : message
+
     const object = {
       method: Methods.sign_message.toString(),
       params: {
         address,
-        message: message.toString('base64'),
+        message: buffer.toString('base64'),
         symbol
       }
     }

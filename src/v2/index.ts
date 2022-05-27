@@ -3,3 +3,5 @@ export type {
   DeviceInfo,
   Signature
 } from './types'
+export { TransferType } from './types'
+export * from './errors'

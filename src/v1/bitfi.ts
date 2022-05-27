@@ -1,5 +1,6 @@
 import WebSocket from 'isomorphic-ws'
 import CryptoJS from 'crypto'
+import { Buffer } from 'buffer'
 import fetch from 'node-fetch'
 import ecdsa from 'secp256k1'
 import { BitfiConfig, Callback, EnvoyMessage, SignedMessageResponse } from './types'

@@ -1,6 +1,7 @@
 import { Transaction } from 'ethereumjs-tx'
 import { BitfiConfig, SignInParams, BitfiKeyringSerialized } from './types'
 import { IBitfiKeyring } from '../types'
+import { Buffer } from 'buffer'
 import { Bitfi, calculateCode } from './bitfi'
 import ecdsa from 'secp256k1'
 import WebSocket from 'isomorphic-ws'
