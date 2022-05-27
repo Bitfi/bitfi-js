@@ -1,6 +1,8 @@
+
 import axios from 'axios'
 import { ec } from "elliptic";
 import { Buffer } from 'buffer'
+import CryptoJS from 'crypto-js';
 import Crypto from 'crypto'
 import { 
   Addresses, DeviceInfo, PublicKeys, 
@@ -9,6 +11,7 @@ import {
   Methods, OPCODES, TransferParams, DeviceErrorResponse 
 } from './types';
 import { DeviceError, TimeoutError } from './errors';
+import { buffer2wa, wa2buffer } from '../../src/utils/buffer';
 const curve = new ec('secp256k1')
 
 export default class Bitfi { 
@@ -110,24 +113,32 @@ export default class Bitfi {
     const mac = encrypted.slice(encrypted.length - 32)
     const { iv, encKey, hashingKey } = this._deserializeSessionDhKeyHash(session)
 
-    const hmac256 = Crypto.createHmac('SHA256', hashingKey)
-    const hmac = hmac256.update(Buffer.concat([
-      opcode,
-      devicePublicKey,
-      cipherText
-    ])).digest()
+    const hmac = wa2buffer(CryptoJS.HmacSHA256(buffer2wa(
+      Buffer.concat([
+        opcode,
+        devicePublicKey,
+        cipherText
+      ])
+    ), buffer2wa(hashingKey)))
     
     if (!hmac.equals(mac)) {
       throw new Error(`hmac's are not equal`)
     }
 
-    const decipher = Crypto.createDecipheriv('aes-128-cbc', encKey, iv)
-    
-    let decryptedText: Buffer = decipher.update(cipherText)
+    const decipher = CryptoJS.algo.AES.createDecryptor(
+      buffer2wa(encKey), 
+      {
+        mode: CryptoJS.mode.CBC, 
+        padding: CryptoJS.pad.Pkcs7,
+        iv: buffer2wa(iv)
+      }
+    )
+
+    let decryptedText: Buffer = wa2buffer(decipher.process(buffer2wa(cipherText)))
     
     decryptedText = Buffer.concat([
       decryptedText,
-      decipher.final()
+      wa2buffer(decipher.finalize())
     ])
 
     return decryptedText
@@ -136,14 +147,21 @@ export default class Bitfi {
   private _encrypt(message: Buffer, session: Session): Buffer {
     const { code, eckey } = session
     const { iv, encKey, hashingKey } = this._deserializeSessionDhKeyHash(session)
-    const hmac256 = Crypto.createHmac('SHA256', hashingKey)
-    const cipher = Crypto.createCipheriv('aes-128-cbc', encKey, iv)
 
-    let cipherText: Buffer = cipher.update(message)
+    const cipher = CryptoJS.algo.AES.createEncryptor(
+      buffer2wa(encKey), 
+      {
+        mode: CryptoJS.mode.CBC, 
+        padding: CryptoJS.pad.Pkcs7,
+        iv: buffer2wa(iv)
+      }
+    )
+
+    let cipherText = wa2buffer(cipher.process(buffer2wa(message)))
     
     cipherText = Buffer.concat([
       cipherText,
-      cipher.final()
+      wa2buffer(cipher.finalize())
     ])
     
     const publiKey = Buffer.from(eckey.getPublic().encodeCompressed('hex'), 'hex')
@@ -154,7 +172,7 @@ export default class Bitfi {
       cipherText
     ])
 
-    const hmac = hmac256.update(data).digest()
+    const hmac = wa2buffer(CryptoJS.HmacSHA256(buffer2wa(data), buffer2wa(hashingKey)))
     const res = Buffer.concat([
       data,
       hmac
@@ -164,18 +182,16 @@ export default class Bitfi {
   }
   
   private _calculateSessionCode(pubKey: Buffer, message: Buffer): Buffer {
-    const ripemd160 = Crypto.createHash('ripemd160')
-    const sha256 = Crypto.createHash('sha256')
-    const md5 = Crypto.createHash('md5')
-
-    const key160 = ripemd160.update(sha256.update(pubKey).digest()).digest()
+    const key160 = wa2buffer(CryptoJS.RIPEMD160(
+      CryptoJS.SHA256(buffer2wa(pubKey))
+    ))
 
     const data = Buffer.concat([
       key160,
       message,
     ])
 
-    const code = md5.update(data).digest().slice(0, 4)
+    const code = wa2buffer(CryptoJS.MD5(buffer2wa(data))).slice(0, 4)
     return code
   }
 
@@ -192,9 +208,7 @@ export default class Bitfi {
     }
 
     const code = this._calculateSessionCode(Buffer.from(publicKeyCompressed, 'hex'), bytes)
-    const hash = Crypto.createHash('sha256')
-      .update(bytes)
-      .digest()
+    const hash = wa2buffer(CryptoJS.SHA256(buffer2wa(bytes)))
 
     const derSignature = eckey.sign(hash, { canonical: true }).toDER()
     const derSignatureHex = Buffer.from(derSignature).toString('hex');
@@ -209,9 +223,7 @@ export default class Bitfi {
     const key = curve.keyFromPublic(keyHex, 'hex').getPublic()
 
     const sharedHex = key.mul(eckey.getPrivate()).encodeCompressed('hex') //03 means compressed
-    const sharedSecretHash = Crypto.createHash('sha512')
-      .update(sharedHex, 'hex')
-      .digest()
+    const sharedSecretHash = wa2buffer(CryptoJS.SHA512(buffer2wa(Buffer.from(sharedHex, 'hex'))))
   
     const session: Session = {
       code,

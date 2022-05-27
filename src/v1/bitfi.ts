@@ -1,5 +1,5 @@
 import WebSocket from 'isomorphic-ws'
-import CryptoJS from 'crypto'
+import Crypto from 'crypto'
 import { Buffer } from 'buffer'
 import axios from 'axios'
 import { BitfiConfig, Callback, EnvoyMessage, SignedMessageResponse } from './types'
@@ -13,9 +13,9 @@ export function calculateCode(randomSigningData: string, privKey: string, device
   const pubKey = Buffer.from(curve.keyFromPrivate(privKey).getPublic().encodeCompressed('hex'), 'hex')
 
   //const pubKey = Buffer.from(ecdsa.publicKeyCreate(Buffer.from(privKey, 'hex'), true))
-  const ripemd160 = CryptoJS.createHash('ripemd160')
-  const sha256 = CryptoJS.createHash('sha256')
-  const md5 = CryptoJS.createHash('md5')
+  const ripemd160 = Crypto.createHash('ripemd160')
+  const sha256 = Crypto.createHash('sha256')
+  const md5 = Crypto.createHash('md5')
 
   const key160 = ripemd160.update(sha256.update(pubKey).digest()).digest()
 
@@ -114,7 +114,7 @@ export class Bitfi {
     let envoyToken = ''
     
     const sessionSecret = Buffer.from(this._sessionSecret, 'hex')
-    const sha256 = CryptoJS.createHash('sha256')
+    const sha256 = Crypto.createHash('sha256')
     const hash = sha256.update(message, 'utf8').digest()  
     const eckey = curve.keyFromPrivate(sessionSecret)
     const pubKey = Buffer.from(eckey.getPublic().encodeCompressed('hex'), 'hex')  
