@@ -12,7 +12,8 @@ export type DeviceInfo = {
   processList: string[]
 }
 
-export type Symbol = 'eth' 
+export type EthLikeSymbol = 'eth' | 'dag'
+export type Symbol = 'btc' | EthLikeSymbol
 
 export type SignedTransaction = {
   transaction: string

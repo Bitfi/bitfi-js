@@ -1,10 +1,11 @@
 {
-  "name": "@bitfi/eth-bitfi-keyring",
-  "version": "1.0.12",
+  "name": "@bitfi/bitfi.js",
+  "version": "0.0.4",
   "description": "",
   "main": "index.js",
   "scripts": {
-    "build": "rimraf ./dist && tsc  -p ."
+    "build": "rimraf ./dist && tsc  -p .",
+    "publish:npm": "npm publish --access public"
   },
   "author": "",
   "license": "ISC",
@@ -14,8 +15,7 @@
     "base64-js": "^1.5.1",
     "buffer": "^6.0.3",
     "crypto-js": "^4.1.1",
-    "elliptic": "^6.5.4",
-    "isomorphic-ws": "^4.0.1"
+    "elliptic": "^6.5.4"
   },
   "devDependencies": {
     "@types/crypto-js": "^4.1.1",

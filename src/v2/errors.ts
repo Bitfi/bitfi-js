@@ -15,3 +15,10 @@ export class DeviceError extends Error {
     Object.setPrototypeOf(this, DeviceError.prototype);
   }
 }
+
+export class DeviceNotSupported extends Error {
+  constructor() {
+    super("Device doesn't support it")
+    Object.setPrototypeOf(this, TimeoutError.prototype);
+  }
+}
