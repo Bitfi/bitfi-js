@@ -11,6 +11,9 @@
     "moduleResolution": "node",
     "resolveJsonModule": true,
     "isolatedModules": true,
+    "declarationDir": "dist/types",
+    "declaration": true,
+    "composite": false,
     "incremental": true,
     "target": "es5",
     //"noEmit": true,
@@ -24,7 +27,8 @@
     "lib": [ "ES2020" ],
   },
   "include": [
-    "src" 
+    "src",
+    "index.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }

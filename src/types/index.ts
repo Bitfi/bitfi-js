@@ -1,4 +1,4 @@
-import { DeviceInfo, EthLikeSymbol, Symbol, TransferParams, TransferType } from "../v2/types"
+import { DeviceInfo, EthLikeSymbol, Symbol, TransferParams, TransferResponse, TransferType } from "../v2/types"
 import { Transaction } from "ethereumjs-tx"
 
 export interface IEthKeyring<T> {
@@ -16,10 +16,10 @@ export interface IEthKeyring<T> {
 }
 
 export interface IBitfiKeyring<T> extends IEthKeyring<T> {
-  ping(): Promise<boolean>
+  enable(pingFrequencySec: number): Promise<void>
   authorize(onSessionCodeReceived: (code: string) => void): Promise<boolean>
   getDeviceInfo(): Promise<DeviceInfo>
-  transfer<B extends TransferType>(params: TransferParams[B]): Promise<string>
+  transfer<T extends TransferType, C extends Symbol>(params: TransferParams[T][C]): Promise<TransferResponse[C]>
   getPublicKeys(symbol: Symbol)
   getDeviceEnvoy(): Promise<string>
 }

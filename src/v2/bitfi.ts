@@ -7,7 +7,7 @@ import {
   Addresses, DeviceInfo, PublicKeys, 
   Result, Signature, Symbol, 
   SignedTransaction, Session, TransferType, 
-  Methods, OPCODES, TransferParams, DeviceErrorResponse, EthLikeSymbol 
+  Methods, OPCODES, TransferParams, DeviceErrorResponse, EthLikeSymbol, TransferResponse 
 } from './types';
 import { DeviceError, DeviceNotSupported, TimeoutError } from './errors';
 import { buffer2wa, wa2buffer } from '../../src/utils/buffer';
@@ -16,9 +16,11 @@ import DER from '../utils/der'
 import { Transaction } from 'ethereumjs-tx';
 const curve = new ec('secp256k1')
 
-type BitfiDump = {
-  channelPublicKey: string,
-  session: Session
+export type BitfiDump = {
+  code: string,
+  sharedSecretHash: string,
+  eckey: any,
+  deviceId: string
 }
 
 export default class Bitfi implements IBitfiKeyring<BitfiDump> { 
@@ -29,29 +31,21 @@ export default class Bitfi implements IBitfiKeyring<BitfiDump> {
   private _channelPublicKey: Buffer
   private _deviceID: string
 
-  constructor(url: string, deviceId: string, channelPublicKey?: Buffer | string, session?: Session) {
-    if (Buffer.from(deviceId, 'hex').length !== 3) {
-      throw new Error(`Invalid device id ${deviceId}`)
-    }
+  constructor(url: string, channelPublicKey: Buffer | string, deviceId?: string) {
+    const buffer: Buffer = typeof channelPublicKey === 'string'? Buffer.from(channelPublicKey, 'hex') : channelPublicKey
 
+    if (buffer.length !== 33)
+      throw new Error("Invalid compressed public key, it should 33 bytes")
+
+    this._channelPublicKey = buffer
     this._url = url
-    this._deviceID = deviceId
-    this._timeoutSec = 5
     
-    if (channelPublicKey) {
-      const buffer: Buffer = typeof channelPublicKey === 'string'? Buffer.from(channelPublicKey, 'hex') : channelPublicKey
-
-      if (buffer.length !== 33)
-        throw new Error("Invalid compressed public key, it should 33 bytes")
-
-      this._channelPublicKey = buffer
-
-      if (session) {
-        this.deserialize({
-          channelPublicKey: buffer.toString('hex'),
-          session
-        })
+    if (deviceId) {
+      if (Buffer.from(deviceId, 'hex').length !== 3) {
+        throw new Error(`Invalid device id ${deviceId}`)
       }
+
+      this._deviceID = deviceId
     }
   }
 
@@ -74,19 +68,31 @@ export default class Bitfi implements IBitfiKeyring<BitfiDump> {
 
   public async serialize(): Promise<BitfiDump> {
     return {
-      session: this._session,
-      channelPublicKey: this._channelPublicKey.toString('hex')
+      deviceId: this._deviceID,
+      sharedSecretHash: this._session.sharedSecretHash.toString('hex'),
+      eckey: this._session.eckey.getPrivate().toString('hex'),
+      code: this._session.code.toString('hex')
     }
   }
 
   public async deserialize(obj: BitfiDump): Promise<void> {
-    this._session = obj.session
-    this._channelPublicKey = Buffer.from(obj.channelPublicKey, 'hex')
+    this._session = {
+      eckey: curve.keyFromPrivate(obj.eckey, 'hex'),
+      sharedSecretHash: Buffer.from(obj.sharedSecretHash, 'hex'),
+      code: Buffer.from(obj.code, 'hex')
+    }
+    this._deviceID = obj.deviceId
   }
 
-  public async ping(): Promise<boolean> {
+  public async enable(pingFrequencySec: number = 5): Promise<void> {
+    while (!(await this._ping(pingFrequencySec))) {
+
+    }
+  }
+
+  public async _ping(timeoutSec: number = 5): Promise<boolean> {
     try {
-      const parsed = await this._request(Buffer.from("PING", 'ascii'))
+      const parsed = await this._request(Buffer.from("PING", 'ascii'), timeoutSec)
       
       if (parsed !== "PONG") {
         throw new Error("Invalid response")
@@ -150,21 +156,42 @@ export default class Bitfi implements IBitfiKeyring<BitfiDump> {
     return this._requestEncrypted<DeviceInfo>(object)
   }
 
-  public async transfer<T extends TransferType>(params: TransferParams[T]): Promise<string> {
+  public async transfer<T extends TransferType, C extends Symbol>(params: TransferParams[T][C]): Promise<TransferResponse[C]> {
+    //@ts-ignore
+    const isEthLike = params.gasPrice && params.gasLimit
+    const isDag = params.symbol === 'dag'
+    const isBlindExecution = params.transferType === TransferType.BLIND_EXECUTION
+
     const object = {
       method: Methods.transfer.toString(),
       params: {
         ...params,
-        amount: params.amount.toString(),
-        feeValue: (params.gasPrice * params.gasLimit).toString(),
-        gasUsed: params.gasLimit.toString(),
+        ...isEthLike? {
+          ...isBlindExecution? { tokenAddress: params.to }: {},
+          //@ts-ignore
+          feeValue: (BigInt(params.gasPrice) * BigInt(params.gasLimit)).toString(),
+          //@ts-ignore
+          gasUsed: params.gasLimit.toString(),
+        } : {
+          //@ts-ignore
+          feeValue: params.fee
+        },
+        ...isDag? { lastTxRef: JSON.stringify(params.lastTxRef)} : {}
       }
     }
 
+    //@ts-ignore
     delete object.params.gasPrice
+    //@ts-ignore
     delete object.params.gasLimit
 
-    return (await this._requestEncrypted<SignedTransaction>(object)).transaction
+    let response = (await this._requestEncrypted<SignedTransaction>(object)).transaction
+
+    if (isDag) {
+      response = JSON.parse(Buffer.from(response, 'base64').toString('utf-8'))
+    }
+
+    return response as TransferResponse[C]
   }
 
   public async getDeviceEnvoy(): Promise<string> {
@@ -208,7 +235,7 @@ export default class Bitfi implements IBitfiKeyring<BitfiDump> {
   
   public async signTransaction(address: string, transaction: Transaction, symbol: EthLikeSymbol): Promise<Transaction> {
     throw new DeviceNotSupported()
-
+    /*
     const hexDer = await this.transfer<TransferType.BLIND_EXECUTION>({
       from: address,
       amount: BigInt(transaction.value.toString('hex')),
@@ -226,6 +253,7 @@ export default class Bitfi implements IBitfiKeyring<BitfiDump> {
     transaction.r = der.r
     transaction.s = der.s
     transaction.v = der.v
+    */
   }
   
   
@@ -275,7 +303,7 @@ export default class Bitfi implements IBitfiKeyring<BitfiDump> {
         return this._decrypt(buffer, this._session).toString('utf-8')
       
       default: {
-        const deviceError = JSON.parse(buffer.toString('utf-8')) as DeviceErrorResponse
+        const deviceError = JSON.parse(buffer.toString('utf-8')).error as DeviceErrorResponse
         throw new DeviceError(deviceError.message, deviceError.code)
       }
     }

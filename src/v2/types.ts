@@ -12,9 +12,6 @@ export type DeviceInfo = {
   processList: string[]
 }
 
-export type EthLikeSymbol = 'eth' | 'dag'
-export type Symbol = 'btc' | EthLikeSymbol
-
 export type SignedTransaction = {
   transaction: string
 }
@@ -58,29 +55,88 @@ export enum TransferType {
   TOKENTRANSFER,
 }
 
-type GeneralParams = {
+
+export type EthLikeSymbol = 'eth'
+export type Symbol = ('dag' | 'btc') | EthLikeSymbol
+
+type GeneralParamsDescriptor = {
   from: string,
-  gasPrice: bigint,
-  gasLimit: bigint,
-  amount: bigint,
-  nonce: number,
-  symbol: Symbol,
-  transferType: TransferType,
+  to: string,
+  amount: string
+}
+
+type EthLikeSpecificParams = {
+  gasPrice: string,
+  gasLimit: string,
+  nonce: number
+}
+
+type BtcLikeSpecificParams = {
+  fee: string
+}
+
+export type DagLastTxRef = {
+  prevHash: string,
+  ordinal: number
+}
+
+export type DagSignedTransaction = {
+  edge: {
+    parents: any[], 
+    data: any
+  },
+  data: {
+    amount: string,
+    lastTxRef: DagLastTxRef,
+    salt: number,
+    fee: string
+  },
+  isDummy: boolean,
+  isTest: boolean,
+  lastTxRef: DagLastTxRef
+}
+
+export type TransferResponse = {
+  [key in Exclude<Symbol, 'dag'>]: string
+} & {
+  [key in 'dag']: DagSignedTransaction
+}
+
+type SpecificParamsDescriptor = {
+  [TransferType.OUT_SELF]: {
+    'eth': EthLikeSpecificParams
+    'dag': BtcLikeSpecificParams & {
+      lastTxRef: DagLastTxRef
+    },
+    'btc': BtcLikeSpecificParams
+  },
+
+  [TransferType.BLIND_EXECUTION]: {
+    [key in Exclude<Symbol, EthLikeSymbol>]: never 
+  } & {
+    [key in EthLikeSymbol]: EthLikeSpecificParams & {
+      data: string
+    }
+  },
+
+  [TransferType.TOKENTRANSFER]: {
+    [key in Exclude<Symbol, EthLikeSymbol>]: never 
+  } & {
+    [key in EthLikeSymbol]: EthLikeSpecificParams & {
+      tokenAddr: string,
+      decimals: number,
+      tokenName: string,
+      transferType: TransferType.TOKENTRANSFER
+    }
+  }
 }
 
 export type TransferParams = {
-  [TransferType.OUT_SELF]: GeneralParams & {
-    to: string,
-  },
-  [TransferType.BLIND_EXECUTION]: GeneralParams & {
-    tokenAddr: string,
-    contractData: string
-  },
-  [TransferType.TOKENTRANSFER]: GeneralParams & {
-    to: string,
-    tokenAddr: string,
-    decimals: number,
-    tokenName: string
+  [type in TransferType]: {
+    [key in Symbol]: GeneralParamsDescriptor & SpecificParamsDescriptor[type][key] & {
+      symbol: key,
+      transferType: type
+    }
   }
 }
 
