@@ -1,3 +1,5 @@
+import { DeviceError } from "./errors"
+
 export type DeviceInfo = {
   devicePubKey: string,
   signerPubKey: string,
@@ -96,11 +98,58 @@ export type DagSignedTransaction = {
   lastTxRef: DagLastTxRef
 }
 
+export enum DeviceEventType {
+  Battery = 1,
+  Availability,
+  Session,
+  Error = 999
+}
+
+type DeviceEventPayloadMap = {
+  [DeviceEventType.Battery]: {
+    isCharging: boolean
+    level: number 
+  },
+  [DeviceEventType.Availability]: {
+    isUserBusy: boolean,
+    isUserBlocking: boolean
+  },
+  [DeviceEventType.Session]: {
+    isDisposed: boolean
+  },
+  [DeviceEventType.Error]: DeviceError,
+}
+
 export type TransferResponse = {
   [key in Exclude<Symbol, 'dag'>]: string
 } & {
   [key in 'dag']: DagSignedTransaction
 }
+
+export type DeviceEvent = {
+  [key in DeviceEventType]: DeviceEventPayloadMap[key]
+}
+
+export type BitfiDump = {
+  code: string,
+  sharedSecretHash: string,
+  eckey: any,
+  deviceId: string
+}
+
+export type DeviceMessageRaw = {
+  error: string,
+  ticks: string,
+  message: string,
+  completed: boolean
+}
+
+export type DeviceMessage<T extends DeviceEventType> = {
+  event_type: T,
+  event_info: DeviceEvent[T]
+}
+
+export type DeviceEventCallback<T extends DeviceEventType> = (event: DeviceEvent[T]) => void
 
 type SpecificParamsDescriptor = {
   [TransferType.OUT_SELF]: {

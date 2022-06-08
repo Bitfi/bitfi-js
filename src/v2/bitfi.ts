@@ -7,21 +7,16 @@ import {
   Addresses, DeviceInfo, PublicKeys, 
   Result, Signature, Symbol, 
   SignedTransaction, Session, TransferType, 
-  Methods, OPCODES, TransferParams, DeviceErrorResponse, EthLikeSymbol, TransferResponse 
+  Methods, OPCODES, TransferParams, DeviceErrorResponse, 
+  EthLikeSymbol, TransferResponse, DeviceEventType, DeviceEventCallback, BitfiDump 
 } from './types';
 import { DeviceError, DeviceNotSupported, TimeoutError } from './errors';
 import { buffer2wa, wa2buffer } from '../../src/utils/buffer';
-import { IBitfiKeyring } from '../types';
-import DER from '../utils/der'
+import { IBitfiKeyring, IDeviceListener } from '../types';
 import { Transaction } from 'ethereumjs-tx';
+import { WebSocket } from 'ws';
+import { Listener } from './listener';
 const curve = new ec('secp256k1')
-
-export type BitfiDump = {
-  code: string,
-  sharedSecretHash: string,
-  eckey: any,
-  deviceId: string
-}
 
 export default class Bitfi implements IBitfiKeyring<BitfiDump> { 
   public type: string = "Bitfi"
@@ -31,7 +26,7 @@ export default class Bitfi implements IBitfiKeyring<BitfiDump> {
   private _channelPublicKey: Buffer
   private _deviceID: string
 
-  constructor(url: string, channelPublicKey: Buffer | string, deviceId?: string) {
+  constructor(url: string, channelPublicKey: Buffer | string, deviceId?: string, timeoutSec?: number) {
     const buffer: Buffer = typeof channelPublicKey === 'string'? Buffer.from(channelPublicKey, 'hex') : channelPublicKey
 
     if (buffer.length !== 33)
@@ -39,6 +34,7 @@ export default class Bitfi implements IBitfiKeyring<BitfiDump> {
 
     this._channelPublicKey = buffer
     this._url = url
+    this._timeoutSec = timeoutSec || 5
     
     if (deviceId) {
       if (Buffer.from(deviceId, 'hex').length !== 3) {
@@ -47,6 +43,12 @@ export default class Bitfi implements IBitfiKeyring<BitfiDump> {
 
       this._deviceID = deviceId
     }
+  }
+  
+  public async createListener(url: string, wsProvider: WebSocket): Promise<IDeviceListener> {
+    const token = await this.getDeviceEnvoy()
+    //@ts-ignore
+    return new Listener(token, url, wsProvider)
   }
 
   public async getAccounts(symbol: Symbol): Promise<string[]> {

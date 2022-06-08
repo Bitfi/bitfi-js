@@ -1,5 +1,10 @@
-import { DeviceInfo, EthLikeSymbol, Symbol, TransferParams, TransferResponse, TransferType } from "../v2/types"
+import { 
+  DeviceEventCallback, DeviceEventType, 
+  DeviceInfo, EthLikeSymbol, Symbol, 
+  TransferParams, TransferResponse, TransferType 
+} from "../v2/types"
 import { Transaction } from "ethereumjs-tx"
+import { WebSocket } from "ws"
 
 export interface IEthKeyring<T> {
   type: string,
@@ -20,6 +25,12 @@ export interface IBitfiKeyring<T> extends IEthKeyring<T> {
   authorize(onSessionCodeReceived: (code: string) => void): Promise<boolean>
   getDeviceInfo(): Promise<DeviceInfo>
   transfer<T extends TransferType, C extends Symbol>(params: TransferParams[T][C]): Promise<TransferResponse[C]>
-  getPublicKeys(symbol: Symbol)
+  getPublicKeys(symbol: Symbol): Promise<string[]>
   getDeviceEnvoy(): Promise<string>
+  createListener(url: string, wsProvider: WebSocket): Promise<IDeviceListener>
+}
+
+export interface IDeviceListener {
+  subscribe<T extends DeviceEventType>(eventType: T, callback: DeviceEventCallback<T>): () => void;
+  close: () => void
 }
