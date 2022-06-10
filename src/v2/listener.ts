@@ -1,36 +1,42 @@
-import { IDeviceListener } from "../types"
+import { IBitfiKeyring, IDeviceListener } from "../types"
 import { WebSocket } from "ws"
-import { DeviceEvent, DeviceEventCallback, DeviceEventType, DeviceMessage, DeviceMessageRaw } from "./types"
+import { BitfiDump, DeviceEvent, DeviceEventCallback, EventType, DeviceMessage, DeviceMessageRaw } from "./types"
 import { toCamel } from "../utils/toCamel"
 import { DeviceError } from "./errors"
 
 const defaultSubscribers = {
-  [DeviceEventType.Battery]: {},
-  [DeviceEventType.Availability]: {},
-  [DeviceEventType.Session]: {},
-  [DeviceEventType.Error]: {}
+  [EventType.Battery]: {},
+  [EventType.Availability]: {},
+  [EventType.Session]: {},
+  [EventType.Error]: {}
 }
 
 export class Listener implements IDeviceListener {
-  private readonly _envoy: string
-  private readonly _websocket: WebSocket
+  private _envoy: string
+  private _websocket: WebSocket
   private _counter: number
-  private _restartAttempt: number
+  private _monitorFrequencyMsec: number
+  private _checker: any 
+  private readonly _wsProvider: WebSocket
+  private readonly _url: string
+  private readonly _wallet: IBitfiKeyring<any>
   
   private _subscribers: { 
-    [event in DeviceEventType]: Record<number, DeviceEventCallback<event>> 
+    [event in EventType]: Record<number, DeviceEventCallback<event>> 
   } = { ...defaultSubscribers }
 
-  constructor(envoy: string, url: string, wsProvider: WebSocket) {
-    this._envoy = envoy
-    //@ts-ignore
-    this._websocket = new wsProvider(url)
+  private constructor(wallet: IBitfiKeyring<any>, url: string, wsProvider: WebSocket, monitorFrequencyMsec: number = 3000) {
+    this._wallet = wallet
+    this._websocket = null
     this._counter = 0
-    this._restartAttempt = 1
-    this._startListener()
+    this._wsProvider = wsProvider
+    this._url = url
+    this._monitorFrequencyMsec = monitorFrequencyMsec
   }
   
-  public subscribe<T extends DeviceEventType>(eventType: T, callback: DeviceEventCallback<T>): () => void {
+  public subscribe<T extends Exclude<EventType, EventType.Session>>(
+    eventType: T, callback: DeviceEventCallback<T>
+  ): () => void {
     this._counter++
     const id = this._counter
     //@ts-ignore
@@ -38,42 +44,50 @@ export class Listener implements IDeviceListener {
     return () => delete this._subscribers[eventType][id]
   }
 
-  public close() {
+  public stop() {
+    clearInterval(this._checker)
     this._websocket.close()
-    this._subscribers = { ...defaultSubscribers }
+    this._websocket = null
+  }
+  
+  private _monitor() {
+    if (this._websocket && this._websocket.readyState !== this._websocket.CLOSED) {
+      return
+    }
+    
+    this._start()
   }
 
-  private _restart() {
-    const timeoutMsec = Math.pow(2, this._restartAttempt) * 1000
-    this._restartAttempt++
-    console.log(`restarting in ${timeoutMsec / 1000} seconds`)
-
-    setTimeout(() => {
-      this._startListener()
-    }, timeoutMsec)
-  }
-
-  private _notify<T extends DeviceEventType>(type: T, event: DeviceEvent[T]) {
+  private _notify<T extends EventType>(type: T, event: DeviceEvent[T]) {
     for (const subscriber of Object.values(this._subscribers[type])) {
       //@ts-ignore
       subscriber(event)
     }
   }
 
-  private _startListener() {
-    console.log(this._envoy)
-    this._websocket.addEventListener("open", (event) => {
+  private _start() {
+    if (this._websocket && this._websocket.readyState !== this._websocket.CLOSED) {
+      throw new Error('Websocket is running already')
+    }
+
+    console.log('NEW INSTANCE OF')
+
+    //@ts-ignore
+    this._websocket = new this._wsProvider(this._url)
+
+    this._websocket.addEventListener("open", async (event) => {
       this._websocket.send(JSON.stringify({ ClientToken: this._envoy }));
     });
 
     this._websocket.addEventListener('close', (e) => {
       console.log(`CLOSED WITH CODE ${e.code}`)
     })
-    this._websocket.addEventListener('error', this._restart.bind(this))
+
+    this._websocket.addEventListener('error', () => {
+      console.log('error')
+    })
 
     this._websocket.addEventListener("message", (e) => {
-      console.log(e.data)
-      
       if (!e.data)
         return
 
@@ -82,20 +96,20 @@ export class Listener implements IDeviceListener {
       
       if (message) {
         const mes = toCamel(JSON.parse(Buffer.from(message, 'base64').toString('utf-8'))) as DeviceMessage<any>
-        console.log(mes)
+
         if (mes.event_info && mes.event_type && this._subscribers[mes.event_type]) {
           switch (mes.event_type) {
-            case DeviceEventType.Session: {
-              const payload = mes.event_info as DeviceEvent[DeviceEventType.Session]
-              this._notify(mes.event_type, payload)
-              this._restart()
-              break
-            }
-            default: {
-              this._notify(mes.event_type, mes.event_info)
+            case EventType.Session: {
+              const payload = mes.event_info as DeviceEvent[EventType.Session]
+
+              if (payload.isDisposed) {
+                // user closed the session
+                this.stop()
+              }
             }
           }
-          
+
+          this._notify(mes.event_type, mes.event_info)
         }
       }
 
@@ -103,8 +117,16 @@ export class Listener implements IDeviceListener {
 
       if (error) {
         console.log(error)
-        this._notify(DeviceEventType.Error, new DeviceError(error, 0))
+        this._notify(EventType.Error, new DeviceError(error, 0))
       }
     })
+  }
+
+  public async start(): Promise<void> {
+    const envoy = await this._wallet.getDeviceEnvoy()
+
+    this._envoy = envoy
+    this._checker = setInterval(this._monitor.bind(this), this._monitorFrequencyMsec)
+    this._start()
   }
 }

@@ -9,5 +9,5 @@ export type {
   DagLastTxRef,
   TransferResponse
 } from './types'
-export { TransferType, DeviceEventType } from './types'
+export { TransferType, EventType } from './types'
 export * from './errors'

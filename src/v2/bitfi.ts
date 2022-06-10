@@ -8,7 +8,7 @@ import {
   Result, Signature, Symbol, 
   SignedTransaction, Session, TransferType, 
   Methods, OPCODES, TransferParams, DeviceErrorResponse, 
-  EthLikeSymbol, TransferResponse, DeviceEventType, DeviceEventCallback, BitfiDump 
+  EthLikeSymbol, TransferResponse, BitfiDump 
 } from './types';
 import { DeviceError, DeviceNotSupported, TimeoutError } from './errors';
 import { buffer2wa, wa2buffer } from '../../src/utils/buffer';
@@ -18,15 +18,18 @@ import { WebSocket } from 'ws';
 import { Listener } from './listener';
 const curve = new ec('secp256k1')
 
+const DEFAULT_NEED_APPROVE_MSEC = 60 * 1000
+const DEFAULT_NO_APPROVE_MSEC = 3 * 1000
+const DEFAULT_AUTHORIZE_TIMEOUT_MSEC  = 120 * 1000
+
 export default class Bitfi implements IBitfiKeyring<BitfiDump> { 
   public type: string = "Bitfi"
   private _url: string
-  private _timeoutSec: number
   private _session: Session
   private _channelPublicKey: Buffer
   private _deviceID: string
 
-  constructor(url: string, channelPublicKey: Buffer | string, deviceId?: string, timeoutSec?: number) {
+  constructor(url: string, channelPublicKey: Buffer | string, deviceId?: string) {
     const buffer: Buffer = typeof channelPublicKey === 'string'? Buffer.from(channelPublicKey, 'hex') : channelPublicKey
 
     if (buffer.length !== 33)
@@ -34,7 +37,6 @@ export default class Bitfi implements IBitfiKeyring<BitfiDump> {
 
     this._channelPublicKey = buffer
     this._url = url
-    this._timeoutSec = timeoutSec || 5
     
     if (deviceId) {
       if (Buffer.from(deviceId, 'hex').length !== 3) {
@@ -46,12 +48,11 @@ export default class Bitfi implements IBitfiKeyring<BitfiDump> {
   }
   
   public async createListener(url: string, wsProvider: WebSocket): Promise<IDeviceListener> {
-    const token = await this.getDeviceEnvoy()
     //@ts-ignore
-    return new Listener(token, url, wsProvider)
+    return new Listener(this, url, wsProvider)
   }
 
-  public async getAccounts(symbol: Symbol): Promise<string[]> {
+  public async getAccounts(symbol: Symbol, timeoutMsec: number = DEFAULT_NO_APPROVE_MSEC): Promise<string[]> {
     const object = {
       method: Methods.get_addresses,
       params: {
@@ -59,7 +60,7 @@ export default class Bitfi implements IBitfiKeyring<BitfiDump> {
       }
     }
 
-    return (await this._requestEncrypted<Addresses>(object)).addresses
+    return (await this._requestEncrypted<Addresses>(object, timeoutMsec)).addresses
   }
 
   public async removeAccount(address: string): Promise<void> {
@@ -86,15 +87,32 @@ export default class Bitfi implements IBitfiKeyring<BitfiDump> {
     this._deviceID = obj.deviceId
   }
 
-  public async enable(pingFrequencySec: number = 5): Promise<void> {
-    while (!(await this._ping(pingFrequencySec))) {
+  public async enable(timeoutMsec: number = 30000, pingFrequencyMsec: number = 5000): Promise<void> {
+    const deadline = Date.now() + timeoutMsec
+    return new Promise((res, rej) => {
+      const ping = async () => {
+        if (Date.now() > deadline) 
+          rej(new TimeoutError())
 
-    }
+        try {
+          const state = await this.ping(pingFrequencyMsec)
+          if (state) {
+            clearInterval(id)
+            res()
+          }
+        }
+        catch (exc) {}
+      }
+
+      ping()
+      let id = setInterval(ping, pingFrequencyMsec)
+    })
   }
 
-  public async _ping(timeoutSec: number = 5): Promise<boolean> {
+  public async ping(timeoutMsec: number = 3000): Promise<boolean> {
     try {
-      const parsed = await this._request(Buffer.from("PING", 'ascii'), timeoutSec)
+      console.log('Ping...')
+      const parsed = await this._request(Buffer.from("PING", 'ascii'), timeoutMsec)
       
       if (parsed !== "PONG") {
         throw new Error("Invalid response")
@@ -103,17 +121,19 @@ export default class Bitfi implements IBitfiKeyring<BitfiDump> {
       return true
     }
     catch (exc) {
-      console.log(exc)
       return false
     }
   }
 
-  public async authorize(onSessionCodeReceived: (code: string) => void): Promise<boolean> {
+  public async authorize(
+    onSessionCodeReceived: (code: string) => void, 
+    timeoutMsec: number = DEFAULT_AUTHORIZE_TIMEOUT_MSEC 
+  ): Promise<boolean> {
     const eckey = curve.genKeyPair()
 
     const publicKeyCompressed = eckey.getPublic().encodeCompressed('hex')
 
-    const message = await this._request(Buffer.from(`${OPCODES.CHALLEGE}${publicKeyCompressed}`, 'hex'))
+    const message = await this._request(Buffer.from(`${OPCODES.CHALLEGE}${publicKeyCompressed}`, 'hex'), DEFAULT_NO_APPROVE_MSEC)
     const bytes = Buffer.from(message, 'hex')
       
     if (bytes.length !== 16) {
@@ -134,7 +154,7 @@ export default class Bitfi implements IBitfiKeyring<BitfiDump> {
       throw new Error("Invalid signature")
     }
 
-    const keyHex = await this._request(Buffer.from(`${OPCODES.AUTH}${message}${derSignatureHex}`, 'hex'), 60 << 1)
+    const keyHex = await this._request(Buffer.from(`${OPCODES.AUTH}${message}${derSignatureHex}`, 'hex'), timeoutMsec)
     const key = curve.keyFromPublic(keyHex, 'hex').getPublic()
 
     const sharedHex = key.mul(eckey.getPrivate()).encodeCompressed('hex') //03 means compressed
@@ -150,15 +170,17 @@ export default class Bitfi implements IBitfiKeyring<BitfiDump> {
     return true
   }
 
-  public async getDeviceInfo(): Promise<DeviceInfo> {
+  public async getDeviceInfo(timeoutMsec: number = DEFAULT_NO_APPROVE_MSEC): Promise<DeviceInfo> {
     const object = {
       method: Methods.get_device_info.toString(),
     }
 
-    return this._requestEncrypted<DeviceInfo>(object)
+    return this._requestEncrypted<DeviceInfo>(object, timeoutMsec)
   }
 
-  public async transfer<T extends TransferType, C extends Symbol>(params: TransferParams[T][C]): Promise<TransferResponse[C]> {
+  public async transfer<T extends TransferType, C extends Symbol>(
+    params: TransferParams[T][C], timeoutMsec: number = DEFAULT_NEED_APPROVE_MSEC
+  ): Promise<TransferResponse[C]> {
     //@ts-ignore
     const isEthLike = params.gasPrice && params.gasLimit
     const isDag = params.symbol === 'dag'
@@ -187,7 +209,7 @@ export default class Bitfi implements IBitfiKeyring<BitfiDump> {
     //@ts-ignore
     delete object.params.gasLimit
 
-    let response = (await this._requestEncrypted<SignedTransaction>(object)).transaction
+    let response = (await this._requestEncrypted<SignedTransaction>(object, timeoutMsec)).transaction
 
     if (isDag) {
       response = JSON.parse(Buffer.from(response, 'base64').toString('utf-8'))
@@ -196,15 +218,15 @@ export default class Bitfi implements IBitfiKeyring<BitfiDump> {
     return response as TransferResponse[C]
   }
 
-  public async getDeviceEnvoy(): Promise<string> {
+  public async getDeviceEnvoy(timeoutMsec: number = DEFAULT_NO_APPROVE_MSEC): Promise<string> {
     const object = {
       method: Methods.get_device_envoy,
     }
 
-    return await this._requestEncrypted<string>(object)
+    return await this._requestEncrypted<string>(object, timeoutMsec)
   }
 
-  public async getPublicKeys(symbol: Symbol): Promise<string[]> {
+  public async getPublicKeys(symbol: Symbol, timeoutMsec: number = DEFAULT_NO_APPROVE_MSEC): Promise<string[]> {
     const object = {
       method: Methods.get_pub_keys,
       params: {
@@ -212,10 +234,13 @@ export default class Bitfi implements IBitfiKeyring<BitfiDump> {
       }
     }
 
-    return (await this._requestEncrypted<PublicKeys>(object)).publicKeys
+    return (await this._requestEncrypted<PublicKeys>(object, timeoutMsec)).publicKeys
   }
 
-  public async signMessage(address: string, message: Buffer | string, symbol: Symbol): Promise<string> {
+  public async signMessage(
+    address: string, message: Buffer | string, 
+    symbol: Symbol, timeoutMsec: number = DEFAULT_NEED_APPROVE_MSEC
+  ): Promise<string> {
     const buffer: Buffer = typeof message === 'string'? Buffer.from(message, 'utf-8') : message
 
     const object = {
@@ -227,7 +252,7 @@ export default class Bitfi implements IBitfiKeyring<BitfiDump> {
       }
     }
 
-    return (await this._requestEncrypted<Signature>(object)).signature
+    return (await this._requestEncrypted<Signature>(object, timeoutMsec)).signature
   }
 
   public addAccounts(n: number): Promise<void> {
@@ -272,10 +297,11 @@ export default class Bitfi implements IBitfiKeyring<BitfiDump> {
   }
 
   /** PRIVATE */
-  private async _request(content: Buffer, timeoutSec?: number): Promise<string> {
+  private async _request(content: Buffer, timeoutMsec: number): Promise<string> {
     const wrapped = content.toString('base64')
-
-    const { data } = await axios(`${this._url}/?nonce=${this._deviceID}&timeout=${timeoutSec || this._timeoutSec}&channel=${this._channelPublicKey.toString('hex')}`, {
+    const timeoutSec = Math.round(timeoutMsec / 1000)
+    
+    const { data } = await axios(`${this._url}/?nonce=${this._deviceID}&timeout=${timeoutSec}&channel=${this._channelPublicKey.toString('hex')}`, {
       method: 'POST',
       headers: {'Content-Type': 'application/text'},
       data: wrapped
@@ -399,10 +425,10 @@ export default class Bitfi implements IBitfiKeyring<BitfiDump> {
     return res
   }
 
-  private async _requestEncrypted<T>(object: any): Promise<T> {
+  private async _requestEncrypted<T>(object: any, timeoutMsec: number): Promise<T> {
     const serialized = Buffer.from(JSON.stringify(object), 'utf-8')
     const ecnrypted = this._encrypt(serialized, this._session)
-    const jsonraw = await this._request(ecnrypted, 120)
+    const jsonraw = await this._request(ecnrypted, timeoutMsec)
     const res = JSON.parse(jsonraw) as Result<T>
     return res.result
   }

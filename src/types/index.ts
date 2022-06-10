@@ -1,5 +1,5 @@
 import { 
-  DeviceEventCallback, DeviceEventType, 
+  DeviceEventCallback, EventType, 
   DeviceInfo, EthLikeSymbol, Symbol, 
   TransferParams, TransferResponse, TransferType 
 } from "../v2/types"
@@ -11,8 +11,8 @@ export interface IEthKeyring<T> {
   serialize(): Promise<T>
   deserialize(obj: T): Promise<void>
   addAccounts(n: number): Promise<void>
-  getAccounts(symbol: Symbol): Promise<string[]>
-  signMessage(address: string, data: Buffer | string, symbol: Symbol): Promise<string>
+  getAccounts(symbol: Symbol, timeoutMsec?: number): Promise<string[]>
+  signMessage(address: string, data: Buffer | string, symbol: Symbol, timeoutMsec?: number): Promise<string>
   getEncryptionPublicKey(address: string): Promise<string>
   decryptMessage(address: string, data: string): Promise<string>
   exportAccount(address: string): Promise<void>
@@ -21,16 +21,20 @@ export interface IEthKeyring<T> {
 }
 
 export interface IBitfiKeyring<T> extends IEthKeyring<T> {
-  enable(pingFrequencySec: number): Promise<void>
-  authorize(onSessionCodeReceived: (code: string) => void): Promise<boolean>
-  getDeviceInfo(): Promise<DeviceInfo>
-  transfer<T extends TransferType, C extends Symbol>(params: TransferParams[T][C]): Promise<TransferResponse[C]>
-  getPublicKeys(symbol: Symbol): Promise<string[]>
-  getDeviceEnvoy(): Promise<string>
+  enable(timeoutMsec?: number, pingFrequencyMsec?: number): Promise<void>
+  authorize(onSessionCodeReceived: (code: string) => void, timeoutMsec?: number): Promise<boolean>
+  getDeviceInfo(timeoutMsec?: number): Promise<DeviceInfo>
+  transfer<T extends TransferType, C extends Symbol>(params: TransferParams[T][C], timeoutMsec?: number): Promise<TransferResponse[C]>
+  getPublicKeys(symbol: Symbol, timeoutMsec?: number): Promise<string[]>
+  getDeviceEnvoy(timeoutMsec?: number): Promise<string>
   createListener(url: string, wsProvider: WebSocket): Promise<IDeviceListener>
+  ping(timeoutMsec?: number): Promise<boolean>
 }
 
 export interface IDeviceListener {
-  subscribe<T extends DeviceEventType>(eventType: T, callback: DeviceEventCallback<T>): () => void;
-  close: () => void
+  subscribe<T extends Exclude<EventType, EventType.Session>>(
+    eventType: T, callback: DeviceEventCallback<T>
+  ): () => void;
+  start(): Promise<void>
+  stop: () => void
 }

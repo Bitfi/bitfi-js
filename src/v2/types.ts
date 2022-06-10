@@ -45,7 +45,6 @@ export enum Methods {
   sign_message, 
   get_addresses,
   get_pub_keys, 
-  get_bat_stats, 
   get_device_info, 
   get_device_envoy
 }
@@ -98,7 +97,7 @@ export type DagSignedTransaction = {
   lastTxRef: DagLastTxRef
 }
 
-export enum DeviceEventType {
+export enum EventType {
   Battery = 1,
   Availability,
   Session,
@@ -106,18 +105,18 @@ export enum DeviceEventType {
 }
 
 type DeviceEventPayloadMap = {
-  [DeviceEventType.Battery]: {
+  [EventType.Battery]: {
     isCharging: boolean
     level: number 
   },
-  [DeviceEventType.Availability]: {
+  [EventType.Availability]: {
     isUserBusy: boolean,
     isUserBlocking: boolean
   },
-  [DeviceEventType.Session]: {
+  [EventType.Session]: {
     isDisposed: boolean
   },
-  [DeviceEventType.Error]: DeviceError,
+  [EventType.Error]: DeviceError,
 }
 
 export type TransferResponse = {
@@ -127,7 +126,7 @@ export type TransferResponse = {
 }
 
 export type DeviceEvent = {
-  [key in DeviceEventType]: DeviceEventPayloadMap[key]
+  [key in EventType]: DeviceEventPayloadMap[key]
 }
 
 export type BitfiDump = {
@@ -144,12 +143,12 @@ export type DeviceMessageRaw = {
   completed: boolean
 }
 
-export type DeviceMessage<T extends DeviceEventType> = {
+export type DeviceMessage<T extends EventType> = {
   event_type: T,
   event_info: DeviceEvent[T]
 }
 
-export type DeviceEventCallback<T extends DeviceEventType> = (event: DeviceEvent[T]) => void
+export type DeviceEventCallback<T extends EventType> = (event: DeviceEvent[T]) => void
 
 type SpecificParamsDescriptor = {
   [TransferType.OUT_SELF]: {
