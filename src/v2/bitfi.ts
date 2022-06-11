@@ -18,9 +18,9 @@ import { WebSocket } from 'ws';
 import { Listener } from './listener';
 const curve = new ec('secp256k1')
 
-const DEFAULT_NEED_APPROVE_MSEC = 60 * 1000
-const DEFAULT_NO_APPROVE_MSEC = 3 * 1000
-const DEFAULT_AUTHORIZE_TIMEOUT_MSEC  = 120 * 1000
+const APPROVE_TIMEOUT_MSEC = 120 * 1000
+const ENABLE_TIMEOUT_MSEC = 5 * 60 * 1000
+const REQUEST_TIMOUT_MSEC = 7 * 1000
 
 export default class Bitfi implements IBitfiKeyring<BitfiDump> { 
   public type: string = "Bitfi"
@@ -52,7 +52,7 @@ export default class Bitfi implements IBitfiKeyring<BitfiDump> {
     return new Listener(this, url, wsProvider)
   }
 
-  public async getAccounts(symbol: Symbol, timeoutMsec: number = DEFAULT_NO_APPROVE_MSEC): Promise<string[]> {
+  public async getAccounts(symbol: Symbol, timeoutMsec: number = REQUEST_TIMOUT_MSEC): Promise<string[]> {
     const object = {
       method: Methods.get_addresses,
       params: {
@@ -87,7 +87,7 @@ export default class Bitfi implements IBitfiKeyring<BitfiDump> {
     this._deviceID = obj.deviceId
   }
 
-  public async enable(timeoutMsec: number = 30000, pingFrequencyMsec: number = 5000): Promise<void> {
+  public async enable(timeoutMsec: number = ENABLE_TIMEOUT_MSEC, pingFrequencyMsec: number = 5000): Promise<void> {
     const deadline = Date.now() + timeoutMsec
     return new Promise((res, rej) => {
       const ping = async () => {
@@ -127,13 +127,13 @@ export default class Bitfi implements IBitfiKeyring<BitfiDump> {
 
   public async authorize(
     onSessionCodeReceived: (code: string) => void, 
-    timeoutMsec: number = DEFAULT_AUTHORIZE_TIMEOUT_MSEC 
+    timeoutMsec: number = APPROVE_TIMEOUT_MSEC 
   ): Promise<boolean> {
     const eckey = curve.genKeyPair()
 
     const publicKeyCompressed = eckey.getPublic().encodeCompressed('hex')
 
-    const message = await this._request(Buffer.from(`${OPCODES.CHALLEGE}${publicKeyCompressed}`, 'hex'), DEFAULT_NO_APPROVE_MSEC)
+    const message = await this._request(Buffer.from(`${OPCODES.CHALLEGE}${publicKeyCompressed}`, 'hex'), REQUEST_TIMOUT_MSEC)
     const bytes = Buffer.from(message, 'hex')
       
     if (bytes.length !== 16) {
@@ -170,7 +170,7 @@ export default class Bitfi implements IBitfiKeyring<BitfiDump> {
     return true
   }
 
-  public async getDeviceInfo(timeoutMsec: number = DEFAULT_NO_APPROVE_MSEC): Promise<DeviceInfo> {
+  public async getDeviceInfo(timeoutMsec: number = REQUEST_TIMOUT_MSEC): Promise<DeviceInfo> {
     const object = {
       method: Methods.get_device_info.toString(),
     }
@@ -179,7 +179,7 @@ export default class Bitfi implements IBitfiKeyring<BitfiDump> {
   }
 
   public async transfer<T extends TransferType, C extends Symbol>(
-    params: TransferParams[T][C], timeoutMsec: number = DEFAULT_NEED_APPROVE_MSEC
+    params: TransferParams[T][C], timeoutMsec: number = APPROVE_TIMEOUT_MSEC
   ): Promise<TransferResponse[C]> {
     //@ts-ignore
     const isEthLike = params.gasPrice && params.gasLimit
@@ -218,7 +218,7 @@ export default class Bitfi implements IBitfiKeyring<BitfiDump> {
     return response as TransferResponse[C]
   }
 
-  public async getDeviceEnvoy(timeoutMsec: number = DEFAULT_NO_APPROVE_MSEC): Promise<string> {
+  public async getDeviceEnvoy(timeoutMsec: number = REQUEST_TIMOUT_MSEC): Promise<string> {
     const object = {
       method: Methods.get_device_envoy,
     }
@@ -226,7 +226,7 @@ export default class Bitfi implements IBitfiKeyring<BitfiDump> {
     return await this._requestEncrypted<string>(object, timeoutMsec)
   }
 
-  public async getPublicKeys(symbol: Symbol, timeoutMsec: number = DEFAULT_NO_APPROVE_MSEC): Promise<string[]> {
+  public async getPublicKeys(symbol: Symbol, timeoutMsec: number = REQUEST_TIMOUT_MSEC): Promise<string[]> {
     const object = {
       method: Methods.get_pub_keys,
       params: {
@@ -239,7 +239,7 @@ export default class Bitfi implements IBitfiKeyring<BitfiDump> {
 
   public async signMessage(
     address: string, message: Buffer | string, 
-    symbol: Symbol, timeoutMsec: number = DEFAULT_NEED_APPROVE_MSEC
+    symbol: Symbol, timeoutMsec: number = APPROVE_TIMEOUT_MSEC
   ): Promise<string> {
     const buffer: Buffer = typeof message === 'string'? Buffer.from(message, 'utf-8') : message
 

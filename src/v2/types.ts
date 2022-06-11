@@ -84,13 +84,12 @@ export type DagLastTxRef = {
 export type DagSignedTransaction = {
   edge: {
     parents: any[], 
-    data: any
-  },
-  data: {
-    amount: string,
-    lastTxRef: DagLastTxRef,
-    salt: number,
-    fee: string
+    data: {
+      amount: string,
+      lastTxRef: DagLastTxRef,
+      salt: number,
+      fee: string
+    },
   },
   isDummy: boolean,
   isTest: boolean,
@@ -101,6 +100,7 @@ export enum EventType {
   Battery = 1,
   Availability,
   Session,
+  Closed = 998,
   Error = 999
 }
 
@@ -117,6 +117,7 @@ type DeviceEventPayloadMap = {
     isDisposed: boolean
   },
   [EventType.Error]: DeviceError,
+  [EventType.Closed]: void
 }
 
 export type TransferResponse = {

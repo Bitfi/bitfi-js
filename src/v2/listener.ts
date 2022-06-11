@@ -1,6 +1,6 @@
 import { IBitfiKeyring, IDeviceListener } from "../types"
 import { WebSocket } from "ws"
-import { BitfiDump, DeviceEvent, DeviceEventCallback, EventType, DeviceMessage, DeviceMessageRaw } from "./types"
+import { DeviceEvent, DeviceEventCallback, EventType, DeviceMessage, DeviceMessageRaw } from "./types"
 import { toCamel } from "../utils/toCamel"
 import { DeviceError } from "./errors"
 
@@ -8,7 +8,8 @@ const defaultSubscribers = {
   [EventType.Battery]: {},
   [EventType.Availability]: {},
   [EventType.Session]: {},
-  [EventType.Error]: {}
+  [EventType.Error]: {},
+  [EventType.Closed]: {}
 }
 
 export class Listener implements IDeviceListener {
@@ -48,6 +49,7 @@ export class Listener implements IDeviceListener {
     clearInterval(this._checker)
     this._websocket.close()
     this._websocket = null
+    this._notify(EventType.Closed, null)
   }
   
   private _monitor() {
@@ -69,8 +71,8 @@ export class Listener implements IDeviceListener {
     if (this._websocket && this._websocket.readyState !== this._websocket.CLOSED) {
       throw new Error('Websocket is running already')
     }
-
-    console.log('NEW INSTANCE OF')
+    
+    console.log('Starting websocket')
 
     //@ts-ignore
     this._websocket = new this._wsProvider(this._url)
