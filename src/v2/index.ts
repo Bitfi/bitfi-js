@@ -3,7 +3,7 @@ export type {
   DeviceInfo,
   Signature,
   BitfiDump,
-  Symbol,
+  Symbol as SupportedCurrency,
   EthLikeSymbol,
   DagSignedTransaction,
   DagLastTxRef,

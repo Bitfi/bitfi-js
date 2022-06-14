@@ -35,6 +35,6 @@ export interface IDeviceListener {
   subscribe<T extends Exclude<EventType, EventType.Session>>(
     eventType: T, callback: DeviceEventCallback<T>
   ): () => void;
-  start(): Promise<void>
+  start(envoyToken?: string): Promise<void>
   stop: () => void
 }

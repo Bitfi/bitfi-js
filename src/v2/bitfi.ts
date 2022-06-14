@@ -193,7 +193,7 @@ export default class Bitfi implements IBitfiKeyring<BitfiDump> {
         ...isEthLike? {
           ...isBlindExecution? { tokenAddress: params.to }: {},
           //@ts-ignore
-          feeValue: (BigInt(params.gasPrice) * BigInt(params.gasLimit)).toString(),
+          feeValue: (params.gasPrice).toString(),
           //@ts-ignore
           gasUsed: params.gasLimit.toString(),
         } : {

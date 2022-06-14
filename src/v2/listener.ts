@@ -124,10 +124,8 @@ export class Listener implements IDeviceListener {
     })
   }
 
-  public async start(): Promise<void> {
-    const envoy = await this._wallet.getDeviceEnvoy()
-
-    this._envoy = envoy
+  public async start(envoyToken?: string): Promise<void> {
+    this._envoy = envoyToken || await this._wallet.getDeviceEnvoy()
     this._checker = setInterval(this._monitor.bind(this), this._monitorFrequencyMsec)
     this._start()
   }
