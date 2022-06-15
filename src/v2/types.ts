@@ -19,11 +19,25 @@ export type SignedTransaction = {
 }
 
 export type Addresses = {
-  addresses: string[]
+  addresses: WalletAddress[]
+}
+
+export type LegacyProfile = {
+  symbol: Symbol,
+  index: number,
+  doSegwit: boolean,
+  address: string
 }
 
 export type PublicKeys = {
   publicKeys: string[]
+}
+
+export type Utxo = {
+  address: string,
+  amount: string,
+  txHash: string,
+  number: number
 }
 
 export type Result<T> = {
@@ -46,7 +60,13 @@ export enum Methods {
   get_addresses,
   get_pub_keys, 
   get_device_info, 
-  get_device_envoy
+  get_device_envoy,
+  get_legacy_profile
+}
+
+export type RequestObject = {
+  method: Methods
+  params?: any
 }
 
 //BAD!
@@ -57,13 +77,26 @@ export enum TransferType {
 }
 
 
+export type WalletAddress = {
+  address: string,
+  index: string
+}
+
+export type SegwitParam = {
+  [key in SegwitSupportedSymbol]: true | false
+} & {
+  [key in Exclude<Symbol, SegwitSupportedSymbol>]: false
+}
+
 export type EthLikeSymbol = 'eth'
+export type SegwitSupportedSymbol = 'btc'
 export type Symbol = ('dag' | 'btc') | EthLikeSymbol
 
 type GeneralParamsDescriptor = {
   from: string,
   to: string,
-  amount: string
+  amount: string,
+  index: number
 }
 
 type EthLikeSpecificParams = {
@@ -157,7 +190,9 @@ type SpecificParamsDescriptor = {
     'dag': BtcLikeSpecificParams & {
       lastTxRef: DagLastTxRef
     },
-    'btc': BtcLikeSpecificParams
+    'btc': BtcLikeSpecificParams & {
+      outs: Utxo[]
+    }
   },
 
   [TransferType.BLIND_EXECUTION]: {

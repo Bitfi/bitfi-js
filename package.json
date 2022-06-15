@@ -1,6 +1,6 @@
 {
   "name": "@bitfi/bitfi.js",
-  "version": "0.0.19",
+  "version": "0.1.4",
   "description": "",
   "main": "./index.js",
   "typings": "./types/index.d.ts",

@@ -7,7 +7,10 @@ export type {
   EthLikeSymbol,
   DagSignedTransaction,
   DagLastTxRef,
-  TransferResponse
+  TransferResponse,
+  LegacyProfile,
+  WalletAddress,
+  SegwitSupportedSymbol
 } from './types'
 export { TransferType, EventType } from './types'
 export * from './errors'

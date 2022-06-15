@@ -8,7 +8,7 @@ import {
   Result, Signature, Symbol, 
   SignedTransaction, Session, TransferType, 
   Methods, OPCODES, TransferParams, DeviceErrorResponse, 
-  EthLikeSymbol, TransferResponse, BitfiDump 
+  EthLikeSymbol, TransferResponse, BitfiDump, WalletAddress, LegacyProfile, RequestObject, SegwitParam 
 } from './types';
 import { DeviceError, DeviceNotSupported, TimeoutError } from './errors';
 import { buffer2wa, wa2buffer } from '../../src/utils/buffer';
@@ -52,11 +52,17 @@ export default class Bitfi implements IBitfiKeyring<BitfiDump> {
     return new Listener(this, url, wsProvider)
   }
 
-  public async getAccounts(symbol: Symbol, timeoutMsec: number = REQUEST_TIMOUT_MSEC): Promise<string[]> {
+  public async getAccounts<T extends Symbol>(
+    symbol: T, indexes: number[], 
+    doSegwit: SegwitParam[T] = false, 
+    timeoutMsec: number = REQUEST_TIMOUT_MSEC
+  ): Promise<WalletAddress[]> {
     const object = {
       method: Methods.get_addresses,
       params: {
-        symbol
+        symbol,
+        indexes,
+        doSegwit
       }
     }
 
@@ -172,7 +178,7 @@ export default class Bitfi implements IBitfiKeyring<BitfiDump> {
 
   public async getDeviceInfo(timeoutMsec: number = REQUEST_TIMOUT_MSEC): Promise<DeviceInfo> {
     const object = {
-      method: Methods.get_device_info.toString(),
+      method: Methods.get_device_info,
     }
 
     return this._requestEncrypted<DeviceInfo>(object, timeoutMsec)
@@ -187,7 +193,7 @@ export default class Bitfi implements IBitfiKeyring<BitfiDump> {
     const isBlindExecution = params.transferType === TransferType.BLIND_EXECUTION
 
     const object = {
-      method: Methods.transfer.toString(),
+      method: Methods.transfer,
       params: {
         ...params,
         ...isEthLike? {
@@ -226,29 +232,47 @@ export default class Bitfi implements IBitfiKeyring<BitfiDump> {
     return await this._requestEncrypted<string>(object, timeoutMsec)
   }
 
-  public async getPublicKeys(symbol: Symbol, timeoutMsec: number = REQUEST_TIMOUT_MSEC): Promise<string[]> {
+  public async getPublicKeys(symbol: Symbol, indexes: number[], timeoutMsec: number = REQUEST_TIMOUT_MSEC): Promise<string[]> {
     const object = {
       method: Methods.get_pub_keys,
       params: {
-        symbol
+        symbol,
+        indexes
       }
     }
 
     return (await this._requestEncrypted<PublicKeys>(object, timeoutMsec)).publicKeys
   }
 
-  public async signMessage(
-    address: string, message: Buffer | string, 
-    symbol: Symbol, timeoutMsec: number = APPROVE_TIMEOUT_MSEC
+    
+  public async getLegacyProfile(symbol: Symbol, timeoutMsec: number = REQUEST_TIMOUT_MSEC): Promise<LegacyProfile[]> {
+    const object = {
+      method: Methods.get_legacy_profile,
+      params: {
+        symbol
+      }
+    }
+
+    //@ts-ignore
+    const res = await this._requestEncrypted<LegacyProfile[]>(object, timeoutMsec)
+
+    return res
+  }
+
+  public async signMessage<T extends Symbol>(
+    address: string, message: Buffer | string, symbol: T, 
+    index: number, doSegwit: SegwitParam[T] = false, timeoutMsec: number = APPROVE_TIMEOUT_MSEC
   ): Promise<string> {
     const buffer: Buffer = typeof message === 'string'? Buffer.from(message, 'utf-8') : message
 
     const object = {
-      method: Methods.sign_message.toString(),
+      method: Methods.sign_message,
       params: {
         address,
         message: buffer.toString('base64'),
-        symbol
+        symbol,
+        index,
+        doSegwit
       }
     }
 
@@ -258,9 +282,9 @@ export default class Bitfi implements IBitfiKeyring<BitfiDump> {
   public addAccounts(n: number): Promise<void> {
     throw new DeviceNotSupported()
   }
+
   
-  
-  public async signTransaction(address: string, transaction: Transaction, symbol: EthLikeSymbol): Promise<Transaction> {
+  public async signTransaction(address: string, transaction: Transaction, indexes: number[], symbol: EthLikeSymbol): Promise<Transaction> {
     throw new DeviceNotSupported()
     /*
     const hexDer = await this.transfer<TransferType.BLIND_EXECUTION>({
@@ -425,7 +449,7 @@ export default class Bitfi implements IBitfiKeyring<BitfiDump> {
     return res
   }
 
-  private async _requestEncrypted<T>(object: any, timeoutMsec: number): Promise<T> {
+  private async _requestEncrypted<T>(object: RequestObject, timeoutMsec: number): Promise<T> {
     const serialized = Buffer.from(JSON.stringify(object), 'utf-8')
     const ecnrypted = this._encrypt(serialized, this._session)
     const jsonraw = await this._request(ecnrypted, timeoutMsec)
