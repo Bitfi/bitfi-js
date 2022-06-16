@@ -12,5 +12,5 @@ export type {
   WalletAddress,
   SegwitSupportedSymbol
 } from './types'
-export { TransferType, EventType } from './types'
+export { TransferType, EventType, ConnectionStatus } from './types'
 export * from './errors'

@@ -1,4 +1,4 @@
-import { DeviceError } from "./errors"
+import { ConnectionError, DeviceError } from "./errors"
 
 export type DeviceInfo = {
   devicePubKey: string,
@@ -129,12 +129,20 @@ export type DagSignedTransaction = {
   lastTxRef: DagLastTxRef
 }
 
+export enum ConnectionStatus {
+  Connecting = "Connecting",
+  Connected = "Connected",
+  Disconnected = "Disconnected"
+}
+
 export enum EventType {
   Battery = 1,
   Availability,
   Session,
-  Closed = 998,
-  Error = 999
+  
+  ConnectionStatus = 1000,
+  SessionClosed,
+  ConnectionError
 }
 
 type DeviceEventPayloadMap = {
@@ -149,8 +157,9 @@ type DeviceEventPayloadMap = {
   [EventType.Session]: {
     isDisposed: boolean
   },
-  [EventType.Error]: DeviceError,
-  [EventType.Closed]: void
+  [EventType.ConnectionError]: ConnectionError,
+  [EventType.ConnectionStatus]: ConnectionStatus,
+  [EventType.SessionClosed]: void
 }
 
 export type TransferResponse = {

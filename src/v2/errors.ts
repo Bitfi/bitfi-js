@@ -16,6 +16,15 @@ export class DeviceError extends Error {
   }
 }
 
+export class ConnectionError extends Error {
+
+  constructor(message: string) {
+    super(message)
+
+    Object.setPrototypeOf(this, ConnectionError.prototype);
+  }
+}
+
 export class NotAuthorized extends Error {
   constructor() {
     super("Not authorized!")

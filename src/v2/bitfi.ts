@@ -283,7 +283,6 @@ export default class Bitfi implements IBitfiKeyring<BitfiDump> {
     throw new DeviceNotSupported()
   }
 
-  
   public async signTransaction(address: string, transaction: Transaction, indexes: number[], symbol: EthLikeSymbol): Promise<Transaction> {
     throw new DeviceNotSupported()
     /*
