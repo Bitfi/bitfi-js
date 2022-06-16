@@ -36,7 +36,7 @@ export type PublicKeys = {
 export type Utxo = {
   address: string,
   amount: string,
-  txHash: string,
+  txnHash: string,
   number: number
 }
 
